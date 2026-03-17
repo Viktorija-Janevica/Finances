@@ -39,6 +39,163 @@
 
         select { background: #1e293b; color: white; border: 1px solid #475569; padding: 8px 12px; border-radius: 8px; cursor: pointer; font-weight: 600; outline: none; }
     </style>
+
+    <script>
+        const CLIENT_ID = '962018048971-1362jqjncldrmln6rm01g88v1jj45go9.apps.googleusercontent.com';
+        const SPREADSHEET_ID = '1eqKkNYd4k9CSlRw8tOCtgzxDooVZgD0z8vjupFgO8iI';
+        
+        let tokenClient, accessToken = null;
+
+        function initClient() {
+            tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: CLIENT_ID,
+                scope: 'https://www.googleapis.com/auth/spreadsheets.readonly',
+                callback: async (resp) => { 
+                    if (resp.access_token) { 
+                        accessToken = resp.access_token; 
+                        await fetchSheetNames(); 
+                    } 
+                },
+            });
+        }
+
+        function handleAuthClick() { 
+            if (tokenClient) {
+                tokenClient.requestAccessToken(); 
+            } else {
+                alert("Google API is still loading. Please wait 2 seconds and try again.");
+            }
+        }
+
+        async function fetchSheetNames() {
+            try {
+                const resp = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}?fields=sheets.properties.title`, {
+                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                });
+                const data = await resp.json();
+                const selector = document.getElementById('month-selector');
+                selector.innerHTML = '';
+
+                data.sheets.forEach((sheet, index) => {
+                    const name = sheet.properties.title;
+                    const option = document.createElement('option');
+                    option.value = name;
+                    option.text = name;
+                    if (index === data.sheets.length - 1) option.selected = true;
+                    selector.appendChild(option);
+                });
+
+                await loadAllData();
+            } catch (err) { console.error("Error fetching sheets:", err); }
+        }
+
+        async function loadAllData() {
+            const selectedSheet = document.getElementById('month-selector').value;
+            if (!selectedSheet) return;
+
+            document.getElementById('login-section').style.display = 'none';
+            document.getElementById('dashboard-container').style.display = 'block';
+            
+            try {
+                const resp = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/'${selectedSheet}'!A1:K100`, { 
+                    headers: { 'Authorization': `Bearer ${accessToken}` } 
+                });
+                const result = await resp.json();
+                renderDashboard(result.values || []);
+            } catch (err) { console.error("Error loading data:", err); }
+        }
+
+        function renderDashboard(allRows) {
+            const container = document.getElementById('kpi-content-area');
+            container.innerHTML = '';
+            if (!allRows || allRows.length === 0) return;
+
+            const dataMap = new Map();
+
+            allRows.slice(1).forEach(row => {
+                const mainDept = row[0];
+                const categoryFull = row[1];
+                if (!mainDept || !categoryFull) return;
+
+                const subDept = categoryFull.includes(' - ') ? categoryFull.split(' - ')[0] : 'General';
+
+                if (!dataMap.has(mainDept)) dataMap.set(mainDept, new Map());
+                const subMap = dataMap.get(mainDept);
+                if (!subMap.has(subDept)) subMap.set(subDept, []);
+                subMap.get(subDept).push(row);
+            });
+
+            dataMap.forEach((subMap, mainDeptName) => {
+                let deptSection = document.createElement('div');
+                deptSection.className = 'main-dept-group space-y-8 pt-10';
+                deptSection.innerHTML = `
+                    <div class="mb-8 ml-2">
+                        <h2 class="text-4xl font-black uppercase italic text-indigo-400 border-l-8 border-indigo-600 pl-6 tracking-tighter">
+                            ${mainDeptName}
+                        </h2>
+                    </div>
+                `;
+
+                subMap.forEach((rows, subDeptName) => {
+                    let cardHtml = `
+                        <div class="kpi-card mb-10">
+                            <div class="side-label">${subDeptName}</div>
+                            <div class="flex-1 p-8">
+                                <div class="grid-row border-none text-[10px] uppercase font-bold text-slate-500 text-center mb-2">
+                                    <div></div>
+                                    <div>2024 Year</div>
+                                    <div>2025 Year</div>
+                                    <div>Prev Month</div>
+                                    <div>5 Years Ago</div>
+                                    <div class="text-indigo-200">2026 Target</div>
+                                </div>
+                                ${rows.map(row => renderKpiRow(row)).join('')}
+                            </div>
+                        </div>
+                    `;
+                    deptSection.innerHTML += cardHtml;
+                });
+                container.appendChild(deptSection);
+            });
+        }
+
+        function renderKpiRow(row) {
+            const icons = { "Income": "💰", "Expenses": "💳", "Profit": "📈", "Participants": "👥" };
+            const categoryFull = row[1] || "";
+            const category = categoryFull.includes(' - ') ? categoryFull.split(' - ')[1] : categoryFull;
+            const icon = icons[category] || "•";
+
+            return `
+                <div class="grid-row">
+                    <div class="font-bold flex items-center gap-2 text-slate-300 text-sm">
+                        <span class="text-lg">${icon}</span> ${category}
+                    </div>
+                    ${createValBox(row[2], row[3], category)} 
+                    ${createValBox(row[4], row[5], category)} 
+                    ${createValBox(row[6], row[7], category)} 
+                    ${createValBox(row[8], row[9], category)} 
+                    <div class="target-box">${row[10] || '-'}</div> 
+                </div>
+            `;
+        }
+
+        function createValBox(val, trend, category) {
+            if (!val || val.trim() === "") return `<div class="text-center text-slate-600">—</div>`;
+            const isExpenses = category.toLowerCase().includes('expenses');
+            let arrow = '', colorClass = 'stable';
+
+            if (trend === 'UP') {
+                arrow = '▲';
+                colorClass = isExpenses ? 'arrow-down' : 'arrow-up';
+            } else if (trend === 'DOWN') {
+                arrow = '▼';
+                colorClass = isExpenses ? 'arrow-up' : 'arrow-down';
+            } else {
+                arrow = '=';
+            }
+            return `<div class="val-box"><span>${val}</span><span class="${colorClass} font-black">${arrow}</span></div>`;
+        }
+    </script>
 </head>
 <body>
 
@@ -57,7 +214,6 @@
             <select id="month-selector" onchange="loadAllData()"></select>
         </div>
         <button onclick="window.print()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold py-2.5 px-5 rounded-xl flex items-center gap-2 transition-all shadow-lg shadow-indigo-500/20">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14"/></svg>
             Export PDF
         </button>
     </div>
@@ -70,161 +226,11 @@
         </button>
     </div>
 
-    <div id="dashboard-container" class="fade-in">
+    <div id="dashboard-container">
         <div id="kpi-content-area" class="space-y-6 pb-20"></div>
     </div>
 </main>
 
-<script>
-    const CLIENT_ID = '962018048971-1362jqjncldrmln6rm01g88v1jj45go9.apps.googleusercontent.com';
-    const SPREADSHEET_ID = '1eqKkNYd4k9CSlRw8tOCtgzxDooVZgD0z8vjupFgO8iI';
-    
-    let tokenClient, accessToken = null;
-
-    function initClient() {
-        tokenClient = google.accounts.oauth2.initTokenClient({
-            client_id: CLIENT_ID,
-            scope: 'https://www.googleapis.com/auth/spreadsheets.readonly',
-            callback: async (resp) => { 
-                if (resp.access_token) { 
-                    accessToken = resp.access_token; 
-                    await fetchSheetNames(); 
-                } 
-            },
-        });
-    }
-
-    function handleAuthClick() { tokenClient.requestAccessToken(); }
-
-    async function fetchSheetNames() {
-        try {
-            const resp = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}?fields=sheets.properties.title`, {
-                headers: { 'Authorization': `Bearer ${accessToken}` }
-            });
-            const data = await resp.json();
-            const selector = document.getElementById('month-selector');
-            selector.innerHTML = '';
-
-            data.sheets.forEach((sheet, index) => {
-                const name = sheet.properties.title;
-                const option = document.createElement('option');
-                option.value = name;
-                option.text = name;
-                if (index === data.sheets.length - 1) option.selected = true;
-                selector.appendChild(option);
-            });
-
-            await loadAllData();
-        } catch (err) { console.error("Error fetching sheets:", err); }
-    }
-
-    async function loadAllData() {
-        const selectedSheet = document.getElementById('month-selector').value;
-        if (!selectedSheet) return;
-
-        document.getElementById('login-section').style.display = 'none';
-        document.getElementById('dashboard-container').style.display = 'block';
-        
-        try {
-            const resp = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/'${selectedSheet}'!A1:K100`, { 
-                headers: { 'Authorization': `Bearer ${accessToken}` } 
-            });
-            const result = await resp.json();
-            renderDashboard(result.values || []);
-        } catch (err) { console.error("Error loading data:", err); }
-    }
-
-    function renderDashboard(allRows) {
-        const container = document.getElementById('kpi-content-area');
-        container.innerHTML = '';
-        if (allRows.length === 0) return;
-
-        // 1. Группировка данных через Map: { "Main Dept": Map { "Sub Dept": [rows] } }
-        const dataMap = new Map();
-
-        allRows.slice(1).forEach(row => {
-            const mainDept = row[0];
-            if (!mainDept) return;
-
-            const categoryFull = row[1] || "";
-            const subDept = categoryFull.includes(' - ') ? categoryFull.split(' - ')[0] : 'General';
-
-            if (!dataMap.has(mainDept)) dataMap.set(mainDept, new Map());
-            
-            const subMap = dataMap.get(mainDept);
-            if (!subMap.has(subDept)) subMap.set(subDept, []);
-            subMap.get(subDept).push(row);
-        });
-
-        // 2. Отрисовка без дублей
-        dataMap.forEach((subMap, mainDeptName) => {
-            let deptSection = document.createElement('div');
-            deptSection.className = 'main-dept-group space-y-8 pt-10';
-            deptSection.innerHTML = `
-                <div class="mb-8 ml-2">
-                    <h2 class="text-4xl font-black uppercase italic text-indigo-400 border-l-8 border-indigo-600 pl-6 tracking-tighter">
-                        ${mainDeptName}
-                    </h2>
-                </div>
-            `;
-
-            subMap.forEach((rows, subDeptName) => {
-                let cardHtml = `
-                    <div class="kpi-card mb-10">
-                        <div class="side-label">${subDeptName}</div>
-                        <div class="flex-1 p-8">
-                            <div class="grid-row border-none text-[10px] uppercase font-bold text-slate-500 text-center mb-2">
-                                <div></div>
-                                <div>2024 Year</div>
-                                <div>2025 Year</div>
-                                <div>Prev Month</div>
-                                <div>5 Years Ago</div>
-                                <div class="text-indigo-200">2026 Target</div>
-                            </div>
-                            ${rows.map(row => renderKpiRow(row)).join('')}
-                        </div>
-                    </div>
-                `;
-                deptSection.innerHTML += cardHtml;
-            });
-
-            container.appendChild(deptSection);
-        });
-    }
-
-    function renderKpiRow(row) {
-        const icons = { "Income": "💰", "Expenses": "💳", "Profit": "📈", "Participants": "👥" };
-        const categoryFull = row[1] || "";
-        const category = categoryFull.includes(' - ') ? categoryFull.split(' - ')[1] : categoryFull;
-        const icon = icons[category] || "•";
-
-        return `
-            <div class="grid-row">
-                <div class="font-bold flex items-center gap-2 text-slate-300 text-sm">
-                    <span class="text-lg">${icon}</span> ${category}
-                </div>
-                ${createValBox(row[2], row[3], category)} 
-                ${createValBox(row[4], row[5], category)} 
-                ${createValBox(row[6], row[7], category)} 
-                ${createValBox(row[8], row[9], category)} 
-                <div class="target-box">${row[10] || '-'}</div> 
-            </div>
-        `;
-    }
-
-    function createValBox(val, trend, category) {
-        if (!val || val.trim() === "") return `<div class="text-center text-slate-600">—</div>`;
-        const isExpenses = category.toLowerCase().includes('expenses');
-        let arrow = '', colorClass = 'stable';
-
-        if (trend === 'UP') {
-            arrow = '▲';
-            colorClass = isExpenses ? 'arrow-down' : 'arrow-up';
-        } else if (trend === 'DOWN') {
-            arrow = '▼';
-            colorClass = isExpenses ? 'arrow-up' : 'arrow-down';
-        } else {
-            arrow = '=';
-        }
-        
-        return `<div class="val-box"><span>${val}</span>
+<script src="https://accounts.google.com/gsi/client" onload="initClient()" async defer></script>
+</body>
+</html>
