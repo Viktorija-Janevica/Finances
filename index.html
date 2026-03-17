@@ -12,11 +12,11 @@
         body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #f1f5f9; margin: 0; }
         #dashboard-container { display: none; padding: 24px; max-width: 1400px; margin: 0 auto; }
         
-        /* Стили карточек KPI */
         .kpi-card { background: #1e293b; border-radius: 16px; border: 1px solid #334155; overflow: hidden; display: flex; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2); }
         .side-label { background: #6366f1; color: white; writing-mode: vertical-lr; transform: rotate(180deg); text-align: center; font-weight: 800; padding: 15px; letter-spacing: 0.1em; text-transform: uppercase; }
         
-        .grid-row { display: grid; grid-template-columns: 180px 1fr 1fr 1fr 1fr; gap: 12px; align-items: center; padding: 8px 0; border-bottom: 1px solid #334155; }
+        /* Изменено: добавлена 6-я колонка (180px + 5 колонок по 1fr) */
+        .grid-row { display: grid; grid-template-columns: 180px 1fr 1fr 1fr 1fr 1fr; gap: 12px; align-items: center; padding: 8px 0; border-bottom: 1px solid #334155; }
         .grid-row:last-child { border-bottom: none; }
         
         .val-box { border: 2px solid #6366f1; border-radius: 8px; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; font-weight: 700; background: #0f172a; min-height: 44px; }
@@ -70,8 +70,7 @@
             Navigational Department
         </h1>
 
-        <div id="kpi-content-area" class="space-y-12 pb-20">
-            </div>
+        <div id="kpi-content-area" class="space-y-12 pb-20"></div>
 
     </div>
 </main>
@@ -99,7 +98,7 @@
         document.getElementById('dashboard-container').style.display = 'block';
         
         try {
-            // Читаем Лист5, где лежат данные для этой таблицы (A1:J20)
+            // Читаем диапазон A1:J20
             const resp = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/NAV TC!A1:J20`, { 
                 headers: { 'Authorization': `Bearer ${accessToken}` } 
             });
@@ -121,8 +120,6 @@
         const container = document.getElementById('kpi-content-area');
         container.innerHTML = '';
 
-        // Группируем данные (например, все что относится к NAV TC и GMDSS TC)
-        // В этом примере просто берем первые 4 строки для первой карточки
         const groups = [
             { name: "NAV TC", rows: kpiData.slice(1, 5) },
             { name: "GMDSS TC", rows: kpiData.slice(5, 9) }
@@ -140,7 +137,7 @@
                             <div>2024 Year<br><span class="text-indigo-400">January</span></div>
                             <div>2025 Year<br><span class="text-indigo-400">January</span></div>
                             <div>Previous Month</div>
-                            <div class="text-indigo-200">2026 Year<br>January</div>
+                            <div>5 Years Ago</div> <div class="text-indigo-200">2026 Year<br>January</div>
                         </div>
                         ${group.rows.map(row => renderKpiRow(row)).join('')}
                     </div>
@@ -160,22 +157,41 @@
                 <div class="font-bold flex items-center gap-2 text-slate-300">
                     <span class="text-lg">${icon}</span> ${category}
                 </div>
-                ${createValBox(row[1], row[2])}
-                ${createValBox(row[3], row[4])}
-                ${createValBox(row[5], row[6])}
+                ${createValBox(row[1], row[2], category)}
+                ${createValBox(row[3], row[4], category)}
+                ${createValBox(row[5], row[6], category)}
+                ${createValBox(row[7], row[8], category)}
                 <div class="target-box">${row[9] || '-'}</div>
             </div>
         `;
     }
 
-    function createValBox(val, trend) {
-        if (!val) return `<div></div>`;
-        let arrow = '';
-        if (trend === 'UP') arrow = '<span class="arrow-up">▲</span>';
-        else if (trend === 'DOWN') arrow = '<span class="arrow-down">▼</span>';
-        else arrow = '<span class="stable">=</span>';
+    function createValBox(val, trend, category) {
+        if (!val || val.trim() === "") return `<div></div>`;
         
-        return `<div class="val-box">${val} ${arrow}</div>`;
+        let arrow = '';
+        let colorClass = 'stable';
+        
+        // Логика инверсии для расходов
+        const isExpenses = category.toLowerCase().includes('expenses');
+
+        if (trend === 'UP') {
+            arrow = '▲';
+            colorClass = isExpenses ? 'arrow-down' : 'arrow-up'; 
+        } else if (trend === 'DOWN') {
+            arrow = '▼';
+            colorClass = isExpenses ? 'arrow-up' : 'arrow-down';
+        } else {
+            arrow = '=';
+            colorClass = 'stable';
+        }
+        
+        return `
+            <div class="val-box">
+                <span>${val}</span>
+                <span class="${colorClass}">${arrow}</span>
+            </div>
+        `;
     }
 </script>
 <script src="https://accounts.google.com/gsi/client" onload="initClient()" async defer></script>
