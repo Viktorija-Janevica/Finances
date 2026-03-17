@@ -12,11 +12,10 @@
         body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #f1f5f9; margin: 0; }
         #dashboard-container { display: none; padding: 24px; max-width: 1400px; margin: 0 auto; }
         
-        /* Стили для PDF экспорта */
         @media print {
             body { background: white !important; color: black !important; }
             header, .no-print { display: none !important; }
-            .main-dept-group { page-break-before: always; } /* Каждый департамент с новой страницы */
+            .main-dept-group { page-break-before: always; }
             .kpi-card { break-inside: avoid; border: 1px solid #e2e8f0 !important; background: white !important; color: black !important; box-shadow: none !important; margin-bottom: 20px !important; }
             .side-label { background: #1e293b !important; color: white !important; border-right: 1px solid #ddd; }
             .val-box { border: 1px solid #94a3b8 !important; background: #f8fafc !important; color: black !important; }
@@ -39,7 +38,6 @@
         .stable { color: #94a3b8; }
 
         select { background: #1e293b; color: white; border: 1px solid #475569; padding: 8px 12px; border-radius: 8px; cursor: pointer; font-weight: 600; outline: none; }
-        select:focus { border-color: #6366f1; }
     </style>
 </head>
 <body>
@@ -67,10 +65,6 @@
 
 <main>
     <div id="login-section" class="flex flex-col items-center justify-center h-[80vh] no-print">
-        <div class="text-center mb-8">
-            <h1 class="text-4xl font-black text-white mb-2">Restricted Access</h1>
-            <p class="text-slate-400">Please sign in with your corporate Novikontas email.</p>
-        </div>
         <button onclick="handleAuthClick()" class="bg-white hover:bg-slate-100 text-slate-900 font-bold py-4 px-10 rounded-2xl shadow-2xl active:scale-95 flex items-center gap-4 text-lg transition-all">
             <img src="https://www.google.com/favicon.ico" width="24"> Sign in with Google
         </button>
@@ -145,35 +139,39 @@
         container.innerHTML = '';
         if (allRows.length === 0) return;
 
-        // 1. Группировка по Основным Департаментам (Колонка A)
-        const mainDepts = [...new Set(allRows.slice(1).map(r => r[0]))].filter(d => d);
+        // 1. Группировка данных через Map: { "Main Dept": Map { "Sub Dept": [rows] } }
+        const dataMap = new Map();
 
-        mainDepts.forEach(mainDept => {
-            const mainDeptRows = allRows.filter(r => r[0] === mainDept);
+        allRows.slice(1).forEach(row => {
+            const mainDept = row[0];
+            if (!mainDept) return;
+
+            const categoryFull = row[1] || "";
+            const subDept = categoryFull.includes(' - ') ? categoryFull.split(' - ')[0] : 'General';
+
+            if (!dataMap.has(mainDept)) dataMap.set(mainDept, new Map());
             
-            // Создаем обертку для группы (нужна для разрыва страниц в PDF)
-            let groupDiv = document.createElement('div');
-            groupDiv.className = 'main-dept-group space-y-8 pt-10';
-            
-            groupDiv.innerHTML = `
+            const subMap = dataMap.get(mainDept);
+            if (!subMap.has(subDept)) subMap.set(subDept, []);
+            subMap.get(subDept).push(row);
+        });
+
+        // 2. Отрисовка без дублей
+        dataMap.forEach((subMap, mainDeptName) => {
+            let deptSection = document.createElement('div');
+            deptSection.className = 'main-dept-group space-y-8 pt-10';
+            deptSection.innerHTML = `
                 <div class="mb-8 ml-2">
                     <h2 class="text-4xl font-black uppercase italic text-indigo-400 border-l-8 border-indigo-600 pl-6 tracking-tighter">
-                        ${mainDept}
+                        ${mainDeptName}
                     </h2>
                 </div>
             `;
 
-            // 2. Группировка по Под-департаментам (NAV TC, GMDSS TC и т.д. из колонки B)
-            const subDepts = [...new Set(mainDeptRows.map(r => {
-                return r[1] && r[1].includes(' - ') ? r[1].split(' - ')[0] : 'General';
-            }))];
-
-            subDepts.forEach(subDept => {
-                const subDeptRows = mainDeptRows.filter(r => r[1].startsWith(subDept));
-                
+            subMap.forEach((rows, subDeptName) => {
                 let cardHtml = `
                     <div class="kpi-card mb-10">
-                        <div class="side-label">${subDept}</div>
+                        <div class="side-label">${subDeptName}</div>
                         <div class="flex-1 p-8">
                             <div class="grid-row border-none text-[10px] uppercase font-bold text-slate-500 text-center mb-2">
                                 <div></div>
@@ -183,14 +181,14 @@
                                 <div>5 Years Ago</div>
                                 <div class="text-indigo-200">2026 Target</div>
                             </div>
-                            ${subDeptRows.map(row => renderKpiRow(row)).join('')}
+                            ${rows.map(row => renderKpiRow(row)).join('')}
                         </div>
                     </div>
                 `;
-                groupDiv.innerHTML += cardHtml;
+                deptSection.innerHTML += cardHtml;
             });
 
-            container.appendChild(groupDiv);
+            container.appendChild(deptSection);
         });
     }
 
@@ -229,9 +227,4 @@
             arrow = '=';
         }
         
-        return `<div class="val-box"><span>${val}</span><span class="${colorClass} font-black">${arrow}</span></div>`;
-    }
-</script>
-<script src="https://accounts.google.com/gsi/client" onload="initClient()" async defer></script>
-</body>
-</html>
+        return `<div class="val-box"><span>${val}</span>
