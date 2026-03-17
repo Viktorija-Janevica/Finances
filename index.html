@@ -45,6 +45,7 @@
         const SPREADSHEET_ID = '1eqKkNYd4k9CSlRw8tOCtgzxDooVZgD0z8vjupFgO8iI';
         
         let tokenClient, accessToken = null;
+        let fullDataRows = []; // Храним загруженные данные для фильтрации
 
         function initClient() {
             tokenClient = google.accounts.oauth2.initTokenClient({
@@ -113,34 +114,60 @@
             document.getElementById('dashboard-container').style.display = 'block';
             
             try {
-                const resp = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/'${selectedSheet}'!A1:K100`, { 
+                const resp = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/'${selectedSheet}'!A1:K150`, { 
                     headers: { 'Authorization': `Bearer ${accessToken}` } 
                 });
                 const result = await resp.json();
-                renderDashboard(result.values || []);
+                fullDataRows = result.values || [];
+                
+                updateDeptFilter(fullDataRows);
+                renderDashboard();
             } catch (err) { console.error("Error loading sheet data:", err); }
         }
 
-        function renderDashboard(allRows) {
-            const container = document.getElementById('kpi-content-area');
-            container.innerHTML = '';
-            if (!allRows || allRows.length === 0) return;
+        // Автоматически наполняем фильтр департаментов на основе данных в колонке A
+        function updateDeptFilter(rows) {
+            const deptSelector = document.getElementById('dept-selector');
+            const currentSelection = deptSelector.value;
+            deptSelector.innerHTML = '<option value="ALL">ALL DEPARTMENTS</option>';
+            
+            if (rows.length < 2) return;
+            
+            const depts = [...new Set(rows.slice(1).map(r => r[0] ? r[0].trim().toUpperCase() : null))].filter(d => d);
+            
+            depts.sort().forEach(dept => {
+                const option = document.createElement('option');
+                option.value = dept;
+                option.text = dept;
+                if (dept === currentSelection) option.selected = true;
+                deptSelector.appendChild(option);
+            });
+        }
 
-            // БЕРЕМ ЗАГОЛОВКИ ИЗ ПЕРВОЙ СТРОКИ ТАБЛИЦЫ
+        function renderDashboard() {
+            const container = document.getElementById('kpi-content-area');
+            const selectedDept = document.getElementById('dept-selector').value;
+            container.innerHTML = '';
+            
+            if (!fullDataRows || fullDataRows.length === 0) return;
+
             const headers = {
-                y1: allRows[0][2] || "Year 1",
-                y2: allRows[0][4] || "Year 2",
-                prev: allRows[0][6] || "Prev Month",
-                old: allRows[0][8] || "5 Years Ago",
-                target: allRows[0][10] || "Target"
+                y1: fullDataRows[0][2] || "Year 1",
+                y2: fullDataRows[0][4] || "Year 2",
+                prev: fullDataRows[0][6] || "Prev Month",
+                old: fullDataRows[0][8] || "5 Years Ago",
+                target: fullDataRows[0][10] || "Target"
             };
 
             const dataMap = new Map();
 
-            allRows.slice(1).forEach(row => {
+            fullDataRows.slice(1).forEach(row => {
                 const mainDeptRaw = row[0] ? row[0].trim().toUpperCase() : null;
                 const categoryFull = row[1] ? row[1].trim() : null;
                 if (!mainDeptRaw || !categoryFull) return;
+
+                // Применяем фильтр по основному департаменту
+                if (selectedDept !== "ALL" && mainDeptRaw !== selectedDept) return;
 
                 const subDeptRaw = categoryFull.includes(' - ') 
                     ? categoryFull.split(' - ')[0].trim().toUpperCase() 
@@ -151,6 +178,11 @@
                 if (!subMap.has(subDeptRaw)) subMap.set(subDeptRaw, []);
                 subMap.get(subDeptRaw).push(row);
             });
+
+            if (dataMap.size === 0) {
+                container.innerHTML = '<div class="text-center py-20 text-slate-500">No data found for the selected filter.</div>';
+                return;
+            }
 
             dataMap.forEach((subMap, mainDeptName) => {
                 let deptSection = document.createElement('div');
@@ -239,12 +271,20 @@
         </div>
     </div>
 
-    <div class="flex items-center gap-6">
-        <div class="flex items-center gap-3">
-            <span class="text-[10px] font-black text-slate-500 uppercase">Select Period:</span>
+    <div class="flex items-center gap-4">
+        <div class="flex items-center gap-2">
+            <span class="text-[10px] font-black text-slate-500 uppercase">Period:</span>
             <select id="month-selector" onchange="loadAllData()"></select>
         </div>
-        <button onclick="window.print()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold py-2.5 px-5 rounded-xl flex items-center gap-2 transition-all shadow-lg shadow-indigo-500/20">
+        
+        <div class="flex items-center gap-2">
+            <span class="text-[10px] font-black text-slate-500 uppercase">Dept:</span>
+            <select id="dept-selector" onchange="renderDashboard()">
+                <option value="ALL">ALL DEPARTMENTS</option>
+            </select>
+        </div>
+
+        <button onclick="window.print()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold py-2.5 px-5 rounded-xl flex items-center gap-2 transition-all shadow-lg shadow-indigo-500/20 ml-2">
             Export PDF
         </button>
     </div>
