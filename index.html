@@ -17,7 +17,7 @@
             header, .no-print { display: none !important; }
             .main-dept-group { page-break-before: always; }
             .kpi-card { break-inside: avoid; border: 1px solid #e2e8f0 !important; background: white !important; color: black !important; box-shadow: none !important; margin-bottom: 20px !important; }
-            .side-label { background: #1e293b !important; color: white !important; border-right: 1px solid #ddd; }
+            .side-label { background: #1e293b !important; color: white !important; border-right: 1px solid #ddd; min-width: 60px !important; }
             .val-box { border: 1px solid #94a3b8 !important; background: #f8fafc !important; color: black !important; }
             .target-box { background: #f1f5f9 !important; border: 1px solid #1e293b !important; color: black !important; }
             .text-indigo-400 { color: #1e293b !important; }
@@ -63,7 +63,7 @@
             if (tokenClient) {
                 tokenClient.requestAccessToken(); 
             } else {
-                alert("Google API is still loading. Please wait 2 seconds and try again.");
+                alert("Подождите, система авторизации еще загружается...");
             }
         }
 
@@ -86,7 +86,7 @@
                 });
 
                 await loadAllData();
-            } catch (err) { console.error("Error fetching sheets:", err); }
+            } catch (err) { console.error("Ошибка при получении списка листов:", err); }
         }
 
         async function loadAllData() {
@@ -102,7 +102,7 @@
                 });
                 const result = await resp.json();
                 renderDashboard(result.values || []);
-            } catch (err) { console.error("Error loading data:", err); }
+            } catch (err) { console.error("Ошибка при загрузке данных:", err); }
         }
 
         function renderDashboard(allRows) {
@@ -113,16 +113,22 @@
             const dataMap = new Map();
 
             allRows.slice(1).forEach(row => {
-                const mainDept = row[0];
-                const categoryFull = row[1];
-                if (!mainDept || !categoryFull) return;
+                // Чистим данные от пробелов и приводим к одному регистру для сравнения
+                const mainDeptRaw = row[0] ? row[0].trim().toUpperCase() : null;
+                const categoryFull = row[1] ? row[1].trim() : null;
+                
+                if (!mainDeptRaw || !categoryFull) return;
 
-                const subDept = categoryFull.includes(' - ') ? categoryFull.split(' - ')[0] : 'General';
+                // Извлекаем под-департамент (то, что до дефиса)
+                const subDeptRaw = categoryFull.includes(' - ') 
+                    ? categoryFull.split(' - ')[0].trim().toUpperCase() 
+                    : 'GENERAL';
 
-                if (!dataMap.has(mainDept)) dataMap.set(mainDept, new Map());
-                const subMap = dataMap.get(mainDept);
-                if (!subMap.has(subDept)) subMap.set(subDept, []);
-                subMap.get(subDept).push(row);
+                if (!dataMap.has(mainDeptRaw)) dataMap.set(mainDeptRaw, new Map());
+                const subMap = dataMap.get(mainDeptRaw);
+                
+                if (!subMap.has(subDeptRaw)) subMap.set(subDeptRaw, []);
+                subMap.get(subDeptRaw).push(row);
             });
 
             dataMap.forEach((subMap, mainDeptName) => {
@@ -140,7 +146,7 @@
                     let cardHtml = `
                         <div class="kpi-card mb-10">
                             <div class="side-label">${subDeptName}</div>
-                            <div class="flex-1 p-8">
+                            <div class="flex-1 p-8 text-center sm:text-left">
                                 <div class="grid-row border-none text-[10px] uppercase font-bold text-slate-500 text-center mb-2">
                                     <div></div>
                                     <div>2024 Year</div>
@@ -162,8 +168,12 @@
         function renderKpiRow(row) {
             const icons = { "Income": "💰", "Expenses": "💳", "Profit": "📈", "Participants": "👥" };
             const categoryFull = row[1] || "";
-            const category = categoryFull.includes(' - ') ? categoryFull.split(' - ')[1] : categoryFull;
-            const icon = icons[category] || "•";
+            const category = categoryFull.includes(' - ') ? categoryFull.split(' - ')[1].trim() : categoryFull.trim();
+            
+            let icon = "•";
+            for (let key in icons) {
+                if (category.includes(key)) { icon = icons[key]; break; }
+            }
 
             return `
                 <div class="grid-row">
