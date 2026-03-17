@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gueslectors | KPI Report</title>
+    <title>KPI Report</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -78,7 +78,7 @@
 
 <script>
     const CLIENT_ID = '962018048971-1362jqjncldrmln6rm01g88v1jj45go9.apps.googleusercontent.com';
-    const SPREADSHEET_ID = '15PfvhPDdF_NXsYFaeIBag7BS1N_zE1JyKFfzkgt9FbE';
+    const SPREADSHEET_ID = '1eqKkNYd4k9CSlRw8tOCtgzxDooVZgD0z8vjupFgO8iI';
     
     let tokenClient, accessToken = null;
     let activeTab = 'standard'; 
@@ -100,7 +100,7 @@
         
         try {
             // Читаем Лист5, где лежат данные для этой таблицы (A1:J20)
-            const resp = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/Лист5!A1:J20`, { 
+            const resp = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/NAV TC!A1:J20`, { 
                 headers: { 'Authorization': `Bearer ${accessToken}` } 
             });
             const result = await resp.json();
