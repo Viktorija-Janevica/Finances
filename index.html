@@ -15,9 +15,9 @@
         @media print {
             body { background: white !important; color: black !important; }
             header, .no-print { display: none !important; }
-            .main-dept-group { page-break-before: always; }
+            .main-dept-group { page-break-before: always; border-top: none !important; }
             .kpi-card { break-inside: avoid; border: 1px solid #e2e8f0 !important; background: white !important; color: black !important; box-shadow: none !important; margin-bottom: 20px !important; }
-            .side-label { background: #1e293b !important; color: white !important; border-right: 1px solid #ddd; min-width: 60px !important; }
+            .side-label { background: #1e293b !important; color: white !important; min-width: 60px !important; }
             .val-box { border: 1px solid #94a3b8 !important; background: #f8fafc !important; color: black !important; }
             .target-box { background: #f1f5f9 !important; border: 1px solid #1e293b !important; color: black !important; }
             .text-indigo-400 { color: #1e293b !important; }
@@ -63,30 +63,54 @@
             if (tokenClient) {
                 tokenClient.requestAccessToken(); 
             } else {
-                alert("Подождите, система авторизации еще загружается...");
+                alert("Система загружается, попробуйте снова через секунду.");
             }
         }
 
         async function fetchSheetNames() {
             try {
+                // 1. Получаем список всех листов
                 const resp = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}?fields=sheets.properties.title`, {
                     headers: { 'Authorization': `Bearer ${accessToken}` }
                 });
                 const data = await resp.json();
+                
+                // 2. Читаем дефолтный месяц из вкладки 'source' (A1)
+                const sourceResp = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/source!A1`, {
+                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                });
+                const sourceData = await sourceResp.json();
+                const defaultMonth = sourceData.values ? sourceData.values[0][0].trim() : null;
+
                 const selector = document.getElementById('month-selector');
                 selector.innerHTML = '';
 
+                // 3. Наполняем фильтр, исключая 'source'
                 data.sheets.forEach((sheet, index) => {
                     const name = sheet.properties.title;
+                    if (name.toLowerCase() === 'source') return;
+
                     const option = document.createElement('option');
                     option.value = name;
                     option.text = name;
-                    if (index === data.sheets.length - 1) option.selected = true;
+
+                    // Если название совпадает с ячейкой source!A1 — выбираем его
+                    if (defaultMonth && name === defaultMonth) {
+                        option.selected = true;
+                    }
                     selector.appendChild(option);
                 });
 
+                // Если в source!A1 пусто, выбираем последний лист в списке
+                if (selector.selectedIndex === -1 && selector.options.length > 0) {
+                    selector.options[selector.options.length - 1].selected = true;
+                }
+
                 await loadAllData();
-            } catch (err) { console.error("Ошибка при получении списка листов:", err); }
+            } catch (err) { 
+                console.error("Error init sheets:", err); 
+                await loadAllData(); // Пытаемся грузить хоть что-то
+            }
         }
 
         async function loadAllData() {
@@ -102,7 +126,7 @@
                 });
                 const result = await resp.json();
                 renderDashboard(result.values || []);
-            } catch (err) { console.error("Ошибка при загрузке данных:", err); }
+            } catch (err) { console.error("Error loading sheet data:", err); }
         }
 
         function renderDashboard(allRows) {
@@ -113,13 +137,11 @@
             const dataMap = new Map();
 
             allRows.slice(1).forEach(row => {
-                // Чистим данные от пробелов и приводим к одному регистру для сравнения
                 const mainDeptRaw = row[0] ? row[0].trim().toUpperCase() : null;
                 const categoryFull = row[1] ? row[1].trim() : null;
                 
                 if (!mainDeptRaw || !categoryFull) return;
 
-                // Извлекаем под-департамент (то, что до дефиса)
                 const subDeptRaw = categoryFull.includes(' - ') 
                     ? categoryFull.split(' - ')[0].trim().toUpperCase() 
                     : 'GENERAL';
@@ -146,7 +168,7 @@
                     let cardHtml = `
                         <div class="kpi-card mb-10">
                             <div class="side-label">${subDeptName}</div>
-                            <div class="flex-1 p-8 text-center sm:text-left">
+                            <div class="flex-1 p-8">
                                 <div class="grid-row border-none text-[10px] uppercase font-bold text-slate-500 text-center mb-2">
                                     <div></div>
                                     <div>2024 Year</div>
@@ -172,7 +194,7 @@
             
             let icon = "•";
             for (let key in icons) {
-                if (category.includes(key)) { icon = icons[key]; break; }
+                if (category.toLowerCase().includes(key.toLowerCase())) { icon = icons[key]; break; }
             }
 
             return `
