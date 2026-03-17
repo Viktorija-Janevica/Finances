@@ -15,9 +15,9 @@
         @media print {
             body { background: white !important; color: black !important; }
             header, .no-print { display: none !important; }
-            .main-dept-group { page-break-before: always; border-top: none !important; }
+            .main-dept-group { page-break-before: always; }
             .kpi-card { break-inside: avoid; border: 1px solid #e2e8f0 !important; background: white !important; color: black !important; box-shadow: none !important; margin-bottom: 20px !important; }
-            .side-label { background: #1e293b !important; color: white !important; min-width: 60px !important; }
+            .side-label { background: #1e293b !important; color: white !important; border-right: 1px solid #ddd; min-width: 65px !important; }
             .val-box { border: 1px solid #94a3b8 !important; background: #f8fafc !important; color: black !important; }
             .target-box { background: #f1f5f9 !important; border: 1px solid #1e293b !important; color: black !important; }
             .text-indigo-400 { color: #1e293b !important; }
@@ -69,13 +69,11 @@
 
         async function fetchSheetNames() {
             try {
-                // 1. Получаем список всех листов
                 const resp = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}?fields=sheets.properties.title`, {
                     headers: { 'Authorization': `Bearer ${accessToken}` }
                 });
                 const data = await resp.json();
                 
-                // 2. Читаем дефолтный месяц из вкладки 'source' (A1)
                 const sourceResp = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/source!A1`, {
                     headers: { 'Authorization': `Bearer ${accessToken}` }
                 });
@@ -85,23 +83,17 @@
                 const selector = document.getElementById('month-selector');
                 selector.innerHTML = '';
 
-                // 3. Наполняем фильтр, исключая 'source'
-                data.sheets.forEach((sheet, index) => {
+                data.sheets.forEach((sheet) => {
                     const name = sheet.properties.title;
                     if (name.toLowerCase() === 'source') return;
 
                     const option = document.createElement('option');
                     option.value = name;
                     option.text = name;
-
-                    // Если название совпадает с ячейкой source!A1 — выбираем его
-                    if (defaultMonth && name === defaultMonth) {
-                        option.selected = true;
-                    }
+                    if (defaultMonth && name === defaultMonth) option.selected = true;
                     selector.appendChild(option);
                 });
 
-                // Если в source!A1 пусто, выбираем последний лист в списке
                 if (selector.selectedIndex === -1 && selector.options.length > 0) {
                     selector.options[selector.options.length - 1].selected = true;
                 }
@@ -109,7 +101,7 @@
                 await loadAllData();
             } catch (err) { 
                 console.error("Error init sheets:", err); 
-                await loadAllData(); // Пытаемся грузить хоть что-то
+                await loadAllData(); 
             }
         }
 
@@ -134,12 +126,20 @@
             container.innerHTML = '';
             if (!allRows || allRows.length === 0) return;
 
+            // БЕРЕМ ЗАГОЛОВКИ ИЗ ПЕРВОЙ СТРОКИ ТАБЛИЦЫ
+            const headers = {
+                y1: allRows[0][2] || "Year 1",
+                y2: allRows[0][4] || "Year 2",
+                prev: allRows[0][6] || "Prev Month",
+                old: allRows[0][8] || "5 Years Ago",
+                target: allRows[0][10] || "Target"
+            };
+
             const dataMap = new Map();
 
             allRows.slice(1).forEach(row => {
                 const mainDeptRaw = row[0] ? row[0].trim().toUpperCase() : null;
                 const categoryFull = row[1] ? row[1].trim() : null;
-                
                 if (!mainDeptRaw || !categoryFull) return;
 
                 const subDeptRaw = categoryFull.includes(' - ') 
@@ -148,7 +148,6 @@
 
                 if (!dataMap.has(mainDeptRaw)) dataMap.set(mainDeptRaw, new Map());
                 const subMap = dataMap.get(mainDeptRaw);
-                
                 if (!subMap.has(subDeptRaw)) subMap.set(subDeptRaw, []);
                 subMap.get(subDeptRaw).push(row);
             });
@@ -171,11 +170,11 @@
                             <div class="flex-1 p-8">
                                 <div class="grid-row border-none text-[10px] uppercase font-bold text-slate-500 text-center mb-2">
                                     <div></div>
-                                    <div>2024 Year</div>
-                                    <div>2025 Year</div>
-                                    <div>Prev Month</div>
-                                    <div>5 Years Ago</div>
-                                    <div class="text-indigo-200">2026 Target</div>
+                                    <div>${headers.y1}</div>
+                                    <div>${headers.y2}</div>
+                                    <div>${headers.prev}</div>
+                                    <div>${headers.old}</div>
+                                    <div class="text-indigo-200">${headers.target}</div>
                                 </div>
                                 ${rows.map(row => renderKpiRow(row)).join('')}
                             </div>
